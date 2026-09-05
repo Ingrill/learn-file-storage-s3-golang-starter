@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -51,12 +54,29 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	mediaType := header.Header.Get("Content-Type")
+	headerType := header.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(headerType)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unknown media type", err)
+		return
+	}
+
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Invalid image format: only JPEG and PNG are allowed", nil)
+		return
+	}
 
 	mediaSplit := strings.Split(mediaType, "/")
 	fileExt := mediaSplit[1]
 
-	fileName := videoIDString + "." + fileExt
+	randomName := make([]byte, 32)
+	_, err = rand.Read(randomName)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error generating thumbnail name", err)
+		return
+	}
+
+	fileName := base64.RawURLEncoding.EncodeToString(randomName) + "." + fileExt
 	pathToFile := filepath.Join(cfg.assetsRoot, fileName)
 	dstFile, err := os.Create(pathToFile)
 	if err != nil {
